@@ -1,0 +1,224 @@
+-- Database schema for the AI-Powered Code Review Assistant
+-- This script creates all necessary tables for storing repositories, code analysis results,
+-- pull requests, and issues detected by the system.
+
+-- Enable UUID generation
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Repositories table
+CREATE TABLE repositories (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    full_name VARCHAR(255) NOT NULL UNIQUE,
+    owner VARCHAR(255) NOT NULL,
+    github_id INTEGER NOT NULL UNIQUE,
+    github_url VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Pull Requests table
+CREATE TABLE pull_requests (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    repository_id UUID NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    number INTEGER NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    github_id INTEGER NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'Pending',
+    created_by VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(repository_id, number)
+);
+
+-- Reviews table
+CREATE TABLE reviews (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    pull_request_id UUID NOT NULL REFERENCES pull_requests(id) ON DELETE CASCADE,
+    status VARCHAR(50) NOT NULL DEFAULT 'InProgress',
+    issue_count INTEGER NOT NULL DEFAULT 0,
+    started_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    error_message TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Files table
+CREATE TABLE files (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    repository_id UUID NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    pull_request_id UUID REFERENCES pull_requests(id) ON DELETE CASCADE,
+    path VARCHAR(512) NOT NULL,
+    language VARCHAR(50),
+    lines_added INTEGER DEFAULT 0,
+    lines_removed INTEGER DEFAULT 0,
+    status VARCHAR(50) DEFAULT 'added',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Issues table
+CREATE TABLE issues (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    repository_id UUID NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    pull_request_id UUID REFERENCES pull_requests(id) ON DELETE CASCADE,
+    review_id UUID REFERENCES reviews(id) ON DELETE CASCADE,
+    file_id UUID REFERENCES files(id) ON DELETE CASCADE,
+    type VARCHAR(50) NOT NULL,
+    description TEXT NOT NULL,
+    line_number INTEGER,
+    column_number INTEGER,
+    severity VARCHAR(50) NOT NULL,
+    rule_id VARCHAR(50),
+    suggestion TEXT,
+    source VARCHAR(50) NOT NULL DEFAULT 'AI',
+    status VARCHAR(50) NOT NULL DEFAULT 'Open',
+    fixed_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Settings table for storing organization-specific settings
+CREATE TABLE settings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    repository_id UUID REFERENCES repositories(id) ON DELETE CASCADE,
+    key VARCHAR(255) NOT NULL,
+    value TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(repository_id, key)
+);
+
+-- Rules table for custom rules
+CREATE TABLE rules (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    repository_id UUID REFERENCES repositories(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    language VARCHAR(50),
+    pattern TEXT NOT NULL,
+    severity VARCHAR(50) NOT NULL DEFAULT 'Medium',
+    suggestion_template TEXT,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Statistics table for tracking metrics
+CREATE TABLE statistics (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    repository_id UUID REFERENCES repositories(id) ON DELETE CASCADE,
+    metric_name VARCHAR(255) NOT NULL,
+    metric_value DECIMAL(10, 2) NOT NULL,
+    date DATE NOT NULL DEFAULT CURRENT_DATE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(repository_id, metric_name, date)
+);
+
+-- Indexes for performance
+CREATE INDEX idx_issues_repository_id ON issues(repository_id);
+CREATE INDEX idx_issues_pull_request_id ON issues(pull_request_id);
+CREATE INDEX idx_issues_severity ON issues(severity);
+CREATE INDEX idx_issues_type ON issues(type);
+CREATE INDEX idx_pull_requests_repository_id ON pull_requests(repository_id);
+CREATE INDEX idx_files_repository_id ON files(repository_id);
+CREATE INDEX idx_files_pull_request_id ON files(pull_request_id);
+
+-- Views for common queries
+
+-- View for repository statistics
+CREATE VIEW repository_stats AS
+SELECT 
+    r.id as repository_id,
+    r.full_name,
+    COUNT(DISTINCT pr.id) as total_pull_requests,
+    COUNT(DISTINCT i.id) as total_issues,
+    COUNT(DISTINCT CASE WHEN i.severity = 'Critical' THEN i.id END) as critical_issues,
+    COUNT(DISTINCT CASE WHEN i.severity = 'High' THEN i.id END) as high_issues,
+    COUNT(DISTINCT CASE WHEN i.severity = 'Medium' THEN i.id END) as medium_issues,
+    COUNT(DISTINCT CASE WHEN i.severity = 'Low' THEN i.id END) as low_issues,
+    COUNT(DISTINCT CASE WHEN i.type = 'Security' THEN i.id END) as security_issues,
+    COUNT(DISTINCT CASE WHEN i.type = 'Performance' THEN i.id END) as performance_issues,
+    COUNT(DISTINCT CASE WHEN i.type = 'Style' THEN i.id END) as style_issues,
+    COUNT(DISTINCT CASE WHEN i.type = 'Error' THEN i.id END) as error_issues,
+    COUNT(DISTINCT CASE WHEN i.type = 'Warning' THEN i.id END) as warning_issues
+FROM 
+    repositories r
+LEFT JOIN 
+    pull_requests pr ON r.id = pr.repository_id
+LEFT JOIN 
+    issues i ON pr.id = i.pull_request_id
+GROUP BY 
+    r.id, r.full_name;
+
+-- View for pull request statistics
+CREATE VIEW pull_request_stats AS
+SELECT 
+    pr.id as pull_request_id,
+    pr.repository_id,
+    pr.number,
+    pr.title,
+    r.status as review_status,
+    COUNT(i.id) as issue_count,
+    COUNT(DISTINCT CASE WHEN i.severity = 'Critical' THEN i.id END) as critical_issues,
+    COUNT(DISTINCT CASE WHEN i.severity = 'High' THEN i.id END) as high_issues,
+    MAX(r.started_at) as last_review_date
+FROM 
+    pull_requests pr
+LEFT JOIN 
+    reviews r ON pr.id = r.pull_request_id
+LEFT JOIN 
+    issues i ON r.id = i.review_id
+GROUP BY 
+    pr.id, pr.repository_id, pr.number, pr.title, r.status;
+
+-- Sample data for testing
+INSERT INTO repositories (name, full_name, owner, github_id, github_url)
+VALUES 
+    ('code-review-assistant', 'johndoe/code-review-assistant', 'johndoe', 123456, 'https://github.com/johndoe/code-review-assistant'),
+    ('sample-project', 'johndoe/sample-project', 'johndoe', 123457, 'https://github.com/johndoe/sample-project');
+
+-- Sample pull requests
+INSERT INTO pull_requests (repository_id, number, title, github_id, status)
+VALUES 
+    ((SELECT id FROM repositories WHERE name = 'code-review-assistant'), 1, 'Initial implementation', 987654, 'Completed'),
+    ((SELECT id FROM repositories WHERE name = 'code-review-assistant'), 2, 'Add database integration', 987655, 'Open'),
+    ((SELECT id FROM repositories WHERE name = 'sample-project'), 1, 'Fix security issues', 987656, 'Open');
+
+-- Sample reviews
+INSERT INTO reviews (pull_request_id, status, issue_count, started_at, completed_at)
+VALUES 
+    ((SELECT id FROM pull_requests WHERE number = 1 AND repository_id = (SELECT id FROM repositories WHERE name = 'code-review-assistant')), 
+     'Completed', 5, CURRENT_TIMESTAMP - INTERVAL '1 day', CURRENT_TIMESTAMP - INTERVAL '23 hours');
+
+-- Sample files
+INSERT INTO files (repository_id, pull_request_id, path, language, lines_added, lines_removed)
+VALUES 
+    ((SELECT id FROM repositories WHERE name = 'code-review-assistant'),
+     (SELECT id FROM pull_requests WHERE number = 1 AND repository_id = (SELECT id FROM repositories WHERE name = 'code-review-assistant')),
+     'src/CodeReviewAssistant.API/Controllers/RepositoryController.cs', 'csharp', 120, 0);
+
+-- Sample issues
+INSERT INTO issues (repository_id, pull_request_id, review_id, file_id, type, description, line_number, column_number, severity, rule_id, suggestion)
+VALUES 
+    ((SELECT id FROM repositories WHERE name = 'code-review-assistant'),
+     (SELECT id FROM pull_requests WHERE number = 1 AND repository_id = (SELECT id FROM repositories WHERE name = 'code-review-assistant')),
+     (SELECT id FROM reviews WHERE pull_request_id = (SELECT id FROM pull_requests WHERE number = 1 AND repository_id = (SELECT id FROM repositories WHERE name = 'code-review-assistant'))),
+     (SELECT id FROM files WHERE path = 'src/CodeReviewAssistant.API/Controllers/RepositoryController.cs'),
+     'Security', 'Potential SQL injection vulnerability in query parameter', 45, 15, 'Critical', 'CWE-89', 
+     'Use parameterized queries instead of string concatenation');
+
+-- Sample rules
+INSERT INTO rules (repository_id, name, description, language, pattern, severity, suggestion_template)
+VALUES 
+    ((SELECT id FROM repositories WHERE name = 'code-review-assistant'),
+     'No hardcoded secrets', 'Detects hardcoded API keys, passwords, etc.', 'csharp', 
+     '(password|secret|apikey|api_key|token)\\s*=\\s*["\']\\w+["\']', 'Critical',
+     'Store secrets in environment variables or a secure key vault');
+
+-- Sample statistics
+INSERT INTO statistics (repository_id, metric_name, metric_value)
+VALUES 
+    ((SELECT id FROM repositories WHERE name = 'code-review-assistant'), 'debug_time_reduction', 50.0),
+    ((SELECT id FROM repositories WHERE name = 'code-review-assistant'), 'accuracy', 95.0);
