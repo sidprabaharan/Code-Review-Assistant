@@ -1,0 +1,196 @@
+using System;
+using System.Collections.Generic;
+using CodeReviewAssistant.Core.Enums;
+
+namespace CodeReviewAssistant.Core.Models
+{
+    // Models for code analysis
+
+    public class CodeIssue
+    {
+        public Guid Id { get; set; }
+        public IssueType Type { get; set; }
+        public string Description { get; set; }
+        public int LineNumber { get; set; }
+        public int ColumnNumber { get; set; }
+        public IssueSeverity Severity { get; set; }
+        public string RuleId { get; set; }
+        public string Suggestion { get; set; }
+        public IssueSource Source { get; set; }
+        public string Language { get; set; }
+        public DateTime CreatedAt { get; set; }
+    }
+
+    public class AnalysisResult
+    {
+        public string FilePath { get; set; }
+        public string Language { get; set; }
+        public Guid RepositoryId { get; set; }
+        public List<CodeIssue> Issues { get; set; } = new List<CodeIssue>();
+        public double ComplexityScore { get; set; }
+        public DateTime AnalysisTimestamp { get; set; }
+
+        public bool HasIssues => Issues.Count > 0;
+        public bool HasCriticalIssues => Issues.Exists(i => i.Severity == IssueSeverity.Critical);
+    }
+
+    public class ParsedCode
+    {
+        public string Language { get; set; }
+        public List<string> ClassNames { get; set; } = new List<string>();
+        public List<string> MethodNames { get; set; } = new List<string>();
+        public int LineCount { get; set; }
+        public double ComplexityScore { get; set; }
+        public Dictionary<string, object> AdditionalData { get; set; } = new Dictionary<string, object>();
+    }
+
+    // Models for GitHub integration
+
+    public class Repository
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; }
+        public string FullName { get; set; }
+        public string Owner { get; set; }
+        public int GitHubId { get; set; }
+        public string GitHubUrl { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+    }
+
+    public class PullRequest
+    {
+        public Guid Id { get; set; }
+        public Guid RepositoryId { get; set; }
+        public int Number { get; set; }
+        public string Title { get; set; }
+        public int GitHubId { get; set; }
+        public string Status { get; set; }
+        public string CreatedBy { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+    }
+
+    public class FileReview
+    {
+        public string FilePath { get; set; }
+        public string Language { get; set; }
+        public List<CodeIssue> Issues { get; set; } = new List<CodeIssue>();
+        public int LinesAdded { get; set; }
+        public int LinesRemoved { get; set; }
+        public string Status { get; set; }
+        public bool AnalysisCompleted { get; set; }
+        public string Error { get; set; }
+    }
+
+    public class PullRequestReviewResult
+    {
+        public int PullRequestId { get; set; }
+        public string RepositoryFullName { get; set; }
+        public DateTime StartTime { get; set; }
+        public DateTime EndTime { get; set; }
+        public ReviewStatus Status { get; set; }
+        public int IssueCount { get; set; }
+        public List<FileReview> FileReviews { get; set; } = new List<FileReview>();
+    }
+
+    // Models for statistics and metrics
+
+    public class RepositoryStatistics
+    {
+        public Guid RepositoryId { get; set; }
+        public string FullName { get; set; }
+        public int TotalPullRequests { get; set; }
+        public int TotalIssues { get; set; }
+        public int TotalIssuesByType(IssueType type) => IssuesByType.ContainsKey(type) ? IssuesByType[type] : 0;
+        public int TotalIssuesBySeverity(IssueSeverity severity) => IssuesBySeverity.ContainsKey(severity) ? IssuesBySeverity[severity] : 0;
+        public Dictionary<IssueType, int> IssuesByType { get; set; } = new Dictionary<IssueType, int>();
+        public Dictionary<IssueSeverity, int> IssuesBySeverity { get; set; } = new Dictionary<IssueSeverity, int>();
+        public double DebugTimeReduction { get; set; }
+        public double Accuracy { get; set; }
+    }
+
+    public class ChartDataPoint
+    {
+        public string Name { get; set; }
+        public double Value { get; set; }
+    }
+
+    // DTOs for API responses
+
+    public class RepositoryDto
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; }
+        public string FullName { get; set; }
+        public string Owner { get; set; }
+        public string GitHubUrl { get; set; }
+    }
+
+    public class PullRequestDto
+    {
+        public Guid Id { get; set; }
+        public int Number { get; set; }
+        public string Title { get; set; }
+        public string Status { get; set; }
+        public int IssueCount { get; set; }
+        public DateTime UpdatedAt { get; set; }
+    }
+
+    public class IssueDto
+    {
+        public Guid Id { get; set; }
+        public string Type { get; set; }
+        public string Description { get; set; }
+        public int LineNumber { get; set; }
+        public int ColumnNumber { get; set; }
+        public string Severity { get; set; }
+        public string FilePath { get; set; }
+        public string Suggestion { get; set; }
+        public DateTime CreatedAt { get; set; }
+    }
+
+    public class StatisticsDto
+    {
+        public int TotalIssues { get; set; }
+        public double DebugTimeReduction { get; set; }
+        public double Accuracy { get; set; }
+        public List<ChartDataPoint> IssuesByType { get; set; } = new List<ChartDataPoint>();
+        public List<ChartDataPoint> IssuesBySeverity { get; set; } = new List<ChartDataPoint>();
+    }
+}
+
+namespace CodeReviewAssistant.Core.Enums
+{
+    public enum IssueType
+    {
+        Security,
+        Performance,
+        Style,
+        Error,
+        Warning
+    }
+
+    public enum IssueSeverity
+    {
+        Critical,
+        High,
+        Medium,
+        Low
+    }
+
+    public enum IssueSource
+    {
+        AI,
+        RuleEngine,
+        Manual
+    }
+
+    public enum ReviewStatus
+    {
+        Pending,
+        InProgress,
+        Completed,
+        Failed
+    }
+}
