@@ -8,7 +8,7 @@ An intelligent code review system that uses large language models to detect synt
 
 ## 🚀 Features
 
-- **Automated Code Analysis**: Analyzes C#, JavaScript, TypeScript, and SQL code for syntax errors, security vulnerabilities, and best practice violations
+- **Automated Code Analysis**: Analyzes C#, JavaScript, TypeScript, SQL and Verilog code for syntax errors, security vulnerabilities, and best practice violations
 - **GitHub Integration**: Seamlessly integrates with GitHub PRs, providing inline comments
 - **Custom Rules Engine**: Define organization-specific coding standards and best practices
 - **Performance Metrics**: Track improvement in code quality over time
